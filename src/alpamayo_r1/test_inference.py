@@ -17,6 +17,8 @@
 # This script loads a dataset, runs inference, and computes the minADE.
 # It can be used to test the inference pipeline.
 
+import time
+
 import torch
 import numpy as np
 
@@ -43,24 +45,50 @@ inputs = processor.apply_chat_template(
     return_dict=True,
     return_tensors="pt",
 )
-model_inputs = {
+base_model_inputs = {
     "tokenized_data": inputs,
     "ego_history_xyz": data["ego_history_xyz"],
     "ego_history_rot": data["ego_history_rot"],
 }
 
-model_inputs = helper.to_device(model_inputs, "cuda")
+# The tokenizer output gets mutated during sampling so keep a primed copy around.
+base_model_inputs = helper.to_device(base_model_inputs, "cuda")
+primed_inputs = {
+    key: value.detach().clone()
+    if torch.is_tensor(value)
+    else value
+    for key, value in base_model_inputs["tokenized_data"].items()
+}
+
+
+def clone_model_inputs(input_dict):
+    """Return a fresh copy of the model inputs for stateless inference calls."""
+
+    cloned = dict(input_dict)
+    cloned["tokenized_data"] = {
+        key: value.detach().clone() if torch.is_tensor(value) else value
+        for key, value in primed_inputs.items()
+    }
+    return cloned
+
+
+def run_inference(curr_model, curr_inputs, *, return_extra=False):
+    """Runs a single inference pass and optionally returns the extra metadata."""
+
+    with torch.no_grad():
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            return curr_model.sample_trajectories_from_data_with_vlm_rollout(
+                data=curr_inputs,
+                top_p=0.98,
+                temperature=0.6,
+                num_traj_samples=1,
+                max_generation_length=256,
+                return_extra=return_extra,
+            )
+
 
 torch.cuda.manual_seed_all(42)
-with torch.autocast("cuda", dtype=torch.bfloat16):
-    pred_xyz, pred_rot, extra = model.sample_trajectories_from_data_with_vlm_rollout(
-        data=model_inputs,
-        top_p=0.98,
-        temperature=0.6,
-        num_traj_samples=1,  # Feel free to raise this for more output trajectories and CoC traces.
-        max_generation_length=256,
-        return_extra=True,
-    )
+pred_xyz, pred_rot, extra = run_inference(model, clone_model_inputs(base_model_inputs), return_extra=True)
 
 # the size is [batch_size, num_traj_sets, num_traj_samples]
 print("Chain-of-Causation (per trajectory):\n", extra["cot"][0])
@@ -74,4 +102,29 @@ print(
     "Note: VLA-reasoning models produce nondeterministic outputs due to trajectory sampling, "
     "hardware differences, etc. With num_traj_samples=1 (set for GPU memory compatibility), "
     "variance in minADE is expected. For visual sanity checks, see notebooks/inference.ipynb"
+)
+
+num_timing_runs = 100
+print(f"\nMeasuring inference latency over {num_timing_runs} runs...")
+durations = []
+for _ in range(num_timing_runs):
+    torch.cuda.synchronize()
+    start = time.perf_counter()
+    run_inference(model, clone_model_inputs(base_model_inputs), return_extra=False)
+    torch.cuda.synchronize()
+    durations.append(time.perf_counter() - start)
+
+sorted_durations = np.sort(np.array(durations))
+trim = int(num_timing_runs * 0.1)
+if trim > 0 and len(sorted_durations) > 2 * trim:
+    central = sorted_durations[trim:-trim]
+else:
+    central = sorted_durations
+
+central_mean = float(np.mean(central))
+central_variance = float(np.var(central))
+
+print(
+    "Inference latency (central 80% of runs):",
+    f"mean = {central_mean:.6f} seconds, variance = {central_variance:.6f} seconds^2",
 )
