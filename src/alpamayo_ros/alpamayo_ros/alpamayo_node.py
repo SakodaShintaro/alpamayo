@@ -74,9 +74,8 @@ class AlpamayoRosNode(Node):
         self._executor = ThreadPoolExecutor(max_workers=1)
         self._active_future: Optional[Future] = None
 
-        self._model: Optional[AlpamayoR1] = None
+        self._model: AlpamayoR1
         self._processor = None
-        self._model_lock = threading.Lock()
 
         self._frame_id = self.get_parameter("frame_id").value
 
@@ -102,6 +101,12 @@ class AlpamayoRosNode(Node):
         self.get_logger().info(f"Subscribed to odometry topic: {odom_topic}")
 
         self._auto_timer = self.create_timer(inference_period, self._timer_callback)
+        self.get_logger().info(
+            f"Loading Alpamayo model {self.model_name} on device={self._device} dtype={self._dtype}"
+        )
+        self._model = AlpamayoR1.from_pretrained(self.model_name, dtype=self._dtype).to(self._device)
+        self._model.eval()
+        self._processor = helper.get_processor(self._model.tokenizer)
 
     def destroy_node(self) -> None:
         """Cleanup resources before shutting down."""
@@ -181,19 +186,7 @@ class AlpamayoRosNode(Node):
         ego_history_rot = torch.from_numpy(history_rot_local).unsqueeze(0).unsqueeze(0)
         return ego_history_xyz, ego_history_rot
 
-    def _ensure_model(self) -> None:
-        with self._model_lock:
-            if self._model is not None:
-                return
-            self.get_logger().info(
-                f"Loading Alpamayo model {self.model_name} on device={self._device} dtype={self._dtype}"
-            )
-            self._model = AlpamayoR1.from_pretrained(self.model_name, dtype=self._dtype).to(self._device)
-            self._model.eval()
-            self._processor = helper.get_processor(self._model.tokenizer)
-
     def _run_inference(self, payload: dict) -> dict:
-        self._ensure_model()
         start = time.time()
         frames = payload["image_frames"]
         messages = helper.create_message(frames.flatten(0, 1))
