@@ -27,6 +27,17 @@ hf auth login
 python3 src/alpamayo_r1/test_inference.py
 ```
 
+## autowareビルド
+
+```bash
+cd ~
+git clone https://github.com/autowarefoundation/autoware
+cd autoware/src
+git clone https://github.com/ros-geographic-info/geographic_info.git -b jazzy
+cd ../
+colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TOOL=ON --packages-up-to autoware_msgs
+```
+
 ## 注意事項
 
 - GPUを使用するため、NVIDIA Container Toolkit が必要です
