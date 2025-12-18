@@ -76,9 +76,6 @@ class AlpamayoRosNode(Node):
         self._executor = ThreadPoolExecutor(max_workers=1)
         self._active_future: Optional[Future] = None
 
-        self._model: AlpamayoR1
-        self._processor = None
-
         self._frame_id = self.get_parameter("frame_id").value
 
         camera_topics = list(
