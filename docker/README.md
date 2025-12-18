@@ -36,6 +36,11 @@ cd autoware/src
 git clone https://github.com/ros-geographic-info/geographic_info.git -b jazzy
 cd ../
 colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TOOL=ON --packages-up-to autoware_msgs
+
+# 全ビルド
+sudo apt update
+export PIP_BREAK_SYSTEM_PACKAGES=1
+rosdep install -y --from-paths src --ignore-src --rosdistro jazzy --skip-keys python3-torch
 ```
 
 ## 注意事項
