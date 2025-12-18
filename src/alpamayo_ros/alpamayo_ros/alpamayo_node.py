@@ -36,7 +36,7 @@ class AlpamayoRosNode(Node):
     def __init__(self) -> None:
         super().__init__("alpamayo_node")
 
-        self.model_name: str = self.declare_parameter("model_name", "nvidia/Alpamayo-R1-10B").value
+        self.model_name: str = "nvidia/Alpamayo-R1-10B"
         self.declare_parameter("num_history_steps", 16)
         self.declare_parameter("num_future_steps", 64)
         self.declare_parameter("num_frames", 4)
