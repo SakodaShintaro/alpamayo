@@ -139,23 +139,17 @@ class AlpamayoRosNode(Node):
         self._active_future.add_done_callback(self._on_future_done)
 
     def _image_callback(self, topic: str, msg: CompressedImage) -> None:
-        tensor = self._compressed_image_to_tensor(msg)
-        if tensor is None:
-            return
-        self._camera_buffers[topic].append((msg.header.stamp, tensor))
-
-    def _odometry_callback(self, msg: Odometry) -> None:
-        self._odometry_buffer.append(msg)
-
-    def _compressed_image_to_tensor(self, msg: CompressedImage) -> Optional[torch.Tensor]:
         np_arr = np.frombuffer(msg.data, np.uint8)
         image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         if image is None:
             self.get_logger().warning("Failed to decode compressed image.")
-            return None
+            return
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         tensor = torch.from_numpy(image).permute(2, 0, 1).contiguous()
-        return tensor
+        self._camera_buffers[topic].append((msg.header.stamp, tensor))
+
+    def _odometry_callback(self, msg: Odometry) -> None:
+        self._odometry_buffer.append(msg)
 
     def _prepare_inference_payload(self) -> Optional[dict]:
         if not all(len(buf) >= self._num_frames for buf in self._camera_buffers.values()):
