@@ -36,8 +36,6 @@ class AlpamayoRosNode(Node):
     def __init__(self) -> None:
         super().__init__("alpamayo_node")
 
-        default_device = "cuda" if torch.cuda.is_available() else "cpu"
-
         self.model_name: str = self.declare_parameter("model_name", "nvidia/Alpamayo-R1-10B").value
         self.declare_parameter("num_history_steps", 16)
         self.declare_parameter("num_future_steps", 64)
@@ -49,7 +47,6 @@ class AlpamayoRosNode(Node):
         self.declare_parameter("num_traj_sets", 1)
         self.declare_parameter("seed", 42)
         self.declare_parameter("auto_run", True)
-        self.declare_parameter("device", default_device)
         self.declare_parameter("frame_id", "base_link")
         self.declare_parameter("trajectory_topic", "/alpamayo/predicted_trajectory")
         self.declare_parameter("cot_topic", "/alpamayo/reasoning")
@@ -59,11 +56,8 @@ class AlpamayoRosNode(Node):
         self.declare_parameter("odometry_topic", "/localization/kinematic_state")
         self.declare_parameter("camera_topics", [])
 
-        self._device = torch.device(self.get_parameter("device").value)
-        if self._device.type == "cuda" and not torch.cuda.is_available():
-            self.get_logger().warning("CUDA was requested but is not available. Falling back to CPU.")
-            self._device = torch.device("cpu")
-        self._dtype = torch.bfloat16 if self._device.type == "cuda" else torch.float32
+        self._device = torch.device("cuda")
+        self._dtype = torch.bfloat16
 
         self._num_history_steps = int(self.get_parameter("num_history_steps").value)
         self._num_frames = int(self.get_parameter("num_frames").value)
