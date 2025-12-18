@@ -24,7 +24,6 @@ from rclpy.node import Node
 from scipy.spatial.transform import Rotation
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import String
-from std_srvs.srv import Trigger
 import cv2
 
 from alpamayo_r1 import helper
@@ -72,8 +71,6 @@ class AlpamayoRosNode(Node):
         self._cot_pub = self.create_publisher(String, cot_topic, queue_size)
         self.get_logger().info(f"Publishing reasoning traces on {cot_topic}")
 
-        self._trigger_srv = self.create_service(Trigger, "run_inference", self._handle_trigger)
-
         self._executor = ThreadPoolExecutor(max_workers=1)
         self._active_future: Optional[Future] = None
 
@@ -118,21 +115,6 @@ class AlpamayoRosNode(Node):
         if payload is None:
             return
         self._launch_inference(payload)
-
-    def _handle_trigger(self, _request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
-        if self._active_future and not self._active_future.done():
-            response.success = False
-            response.message = "Inference already running."
-            return response
-        payload = self._prepare_inference_payload()
-        if payload is None:
-            response.success = False
-            response.message = "Insufficient sensor data for Alpamayo input."
-            return response
-        self._launch_inference(payload)
-        response.success = True
-        response.message = "Alpamayo inference started."
-        return response
 
     def _handle_image(self, topic: str, msg: CompressedImage) -> None:
         tensor = self._compressed_image_to_tensor(msg)
