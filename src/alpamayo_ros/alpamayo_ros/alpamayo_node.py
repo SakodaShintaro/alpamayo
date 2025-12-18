@@ -170,16 +170,8 @@ class AlpamayoRosNode(Node):
         if len(self._odometry_buffer) < self._num_history_steps:
             return None
         odom_history = list(self._odometry_buffer)[-self._num_history_steps :]
-        ego_history_xyz, ego_history_rot = self._build_history_tensors(odom_history)
-        return {
-            "image_frames": image_frames,
-            "ego_history_xyz": ego_history_xyz,
-            "ego_history_rot": ego_history_rot,
-        }
 
-    def _build_history_tensors(
-        self, odom_history: List[Odometry]
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+        # Build history tensors
         positions = []
         rotations = []
         for msg in odom_history:
@@ -195,7 +187,12 @@ class AlpamayoRosNode(Node):
         history_rot_local = np.einsum("ij,njk->nik", t0_rot_inv, rotations_np)
         ego_history_xyz = torch.from_numpy(history_xyz_local).unsqueeze(0).unsqueeze(0)
         ego_history_rot = torch.from_numpy(history_rot_local).unsqueeze(0).unsqueeze(0)
-        return ego_history_xyz, ego_history_rot
+
+        return {
+            "image_frames": image_frames,
+            "ego_history_xyz": ego_history_xyz,
+            "ego_history_rot": ego_history_rot,
+        }
 
     def _run_inference(self, payload: dict) -> dict:
         start = time.time()
