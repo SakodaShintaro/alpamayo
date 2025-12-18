@@ -96,7 +96,10 @@ class AlpamayoRosNode(Node):
 
         for topic in self._camera_topics:
             self.create_subscription(
-                CompressedImage, topic, lambda msg, t=topic: self._handle_image(t, msg), camera_qos
+                CompressedImage,
+                topic,
+                lambda msg, t=topic: self._image_callback(t, msg),
+                camera_qos,
             )
             self.get_logger().info(f"Subscribed to camera topic: {topic}")
 
@@ -106,7 +109,7 @@ class AlpamayoRosNode(Node):
         odom_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST, depth=50
         )
-        self.create_subscription(Odometry, odom_topic, self._handle_odometry, odom_qos)
+        self.create_subscription(Odometry, odom_topic, self._odometry_callback, odom_qos)
         self.get_logger().info(f"Subscribed to odometry topic: {odom_topic}")
 
         self._auto_timer = self.create_timer(inference_period, self._timer_callback)
@@ -135,13 +138,13 @@ class AlpamayoRosNode(Node):
         self._active_future = self._executor.submit(self._run_inference, payload)
         self._active_future.add_done_callback(self._on_future_done)
 
-    def _handle_image(self, topic: str, msg: CompressedImage) -> None:
+    def _image_callback(self, topic: str, msg: CompressedImage) -> None:
         tensor = self._compressed_image_to_tensor(msg)
         if tensor is None:
             return
         self._camera_buffers[topic].append((msg.header.stamp, tensor))
 
-    def _handle_odometry(self, msg: Odometry) -> None:
+    def _odometry_callback(self, msg: Odometry) -> None:
         self._odometry_buffer.append(msg)
 
     def _compressed_image_to_tensor(self, msg: CompressedImage) -> Optional[torch.Tensor]:
