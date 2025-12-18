@@ -1,0 +1,10 @@
+ar1_venv/
+build/
+install/
+log/
+*.pyc
+__pycache__/
+.git/
+.vscode/
+*.egg-info/
+.DS_Store
