@@ -13,6 +13,7 @@ import time
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Dict, List, Optional
+from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 
 import cv2
 import numpy as np
@@ -92,16 +93,26 @@ class AlpamayoRosNode(Node):
         }
         self._camera_lock = threading.Lock()
 
+        # Use BEST_EFFORT QoS to match rosbag2_player default
+
+        camera_qos = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST, depth=10
+        )
+
         for topic in self._camera_topics:
             self.create_subscription(
-                CompressedImage, topic, lambda msg, t=topic: self._handle_image(t, msg), 10
+                CompressedImage, topic, lambda msg, t=topic: self._handle_image(t, msg), camera_qos
             )
             self.get_logger().info(f"Subscribed to camera topic: {topic}")
 
         self._odometry_buffer: deque[Odometry] = deque(maxlen=self._num_history_steps * 4)
         self._odometry_lock = threading.Lock()
         odom_topic = self.get_parameter("odometry_topic").value
-        self.create_subscription(Odometry, odom_topic, self._handle_odometry, 50)
+
+        odom_qos = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST, depth=50
+        )
+        self.create_subscription(Odometry, odom_topic, self._handle_odometry, odom_qos)
         self.get_logger().info(f"Subscribed to odometry topic: {odom_topic}")
 
         self._auto_timer = self.create_timer(inference_period, self._timer_callback)
