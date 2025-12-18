@@ -3,7 +3,13 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description() -> LaunchDescription:
-    """Launch Alpamayo inference node with default parameters."""
+    """Launch Alpamayo node that listens to live camera + odometry topics."""
+    default_camera_topics = [
+        "/sensing/camera/front_wide/image",
+        "/sensing/camera/front_tele/image",
+        "/sensing/camera/cross_left/image",
+        "/sensing/camera/cross_right/image",
+    ]
     return LaunchDescription(
         [
             Node(
@@ -14,10 +20,11 @@ def generate_launch_description() -> LaunchDescription:
                 parameters=[
                     {
                         "auto_run": True,
-                        "clip_id": "030c760c-ae38-49aa-9ad8-f5650a545d26",
-                        "t0_us": 5_100_000,
-                        "trajectory_topic": "/alpamayo/predicted_path",
+                        "camera_topics": default_camera_topics,
+                        "odometry_topic": "/localization/kinematic_state",
+                        "trajectory_topic": "/alpamayo/predicted_trajectory",
                         "cot_topic": "/alpamayo/reasoning",
+                        "inference_period_sec": 1.0,
                     }
                 ],
             )
