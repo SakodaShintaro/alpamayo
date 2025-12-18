@@ -36,16 +36,6 @@ class AlpamayoRosNode(Node):
         super().__init__("alpamayo_node")
 
         self.model_name: str = "nvidia/Alpamayo-R1-10B"
-        self.declare_parameter("num_history_steps", 16)
-        self.declare_parameter("num_future_steps", 64)
-        self.declare_parameter("num_frames", 4)
-        self.declare_parameter("top_p", 0.98)
-        self.declare_parameter("temperature", 0.6)
-        self.declare_parameter("max_generation_length", 256)
-        self.declare_parameter("num_traj_samples", 1)
-        self.declare_parameter("num_traj_sets", 1)
-        self.declare_parameter("seed", 42)
-        self.declare_parameter("frame_id", "base_link")
         self.declare_parameter("trajectory_topic", "/alpamayo/predicted_trajectory")
         self.declare_parameter("cot_topic", "/alpamayo/reasoning")
         self.declare_parameter("publisher_queue_size", 10)
@@ -59,8 +49,8 @@ class AlpamayoRosNode(Node):
         self._device = torch.device("cuda")
         self._dtype = torch.bfloat16
 
-        self._num_history_steps = int(self.get_parameter("num_history_steps").value)
-        self._num_frames = int(self.get_parameter("num_frames").value)
+        self._num_history_steps = 16
+        self._num_frames = 4
         inference_period = float(self.get_parameter("inference_period_sec").value)
 
         queue_size = int(self.get_parameter("publisher_queue_size").value)
@@ -75,7 +65,7 @@ class AlpamayoRosNode(Node):
         self._executor = ThreadPoolExecutor(max_workers=1)
         self._active_future: Optional[Future] = None
 
-        self._frame_id = self.get_parameter("frame_id").value
+        self._frame_id = "base_link"
 
         camera_topics = list(
             self.get_parameter("camera_topics").get_parameter_value().string_array_value
@@ -120,7 +110,7 @@ class AlpamayoRosNode(Node):
         self._processor = helper.get_processor(self._model.tokenizer)
 
         # Set random seed once during initialization
-        seed = int(self.get_parameter("seed").value)
+        seed = 0
         torch.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
 
@@ -211,11 +201,11 @@ class AlpamayoRosNode(Node):
         model_inputs = helper.to_device(model_inputs, device=self._device)
 
         generation_kwargs = {
-            "top_p": float(self.get_parameter("top_p").value),
-            "temperature": float(self.get_parameter("temperature").value),
-            "num_traj_samples": int(self.get_parameter("num_traj_samples").value),
-            "num_traj_sets": int(self.get_parameter("num_traj_sets").value),
-            "max_generation_length": int(self.get_parameter("max_generation_length").value),
+            "top_p": 0.98,
+            "temperature": 0.6,
+            "num_traj_samples": 1,
+            "num_traj_sets": 1,
+            "max_generation_length": 64,
             "return_extra": True,
         }
 
