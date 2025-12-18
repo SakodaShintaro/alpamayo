@@ -49,6 +49,10 @@ class AlpamayoRosNode(Node):
         self._device = torch.device("cuda")
         self._dtype = torch.bfloat16
 
+        KINEMATIC_STATE_HZ = 50.0
+        ALPAMAYO_INPUT_HZ = 10.0
+        self.skip_num = int(KINEMATIC_STATE_HZ / ALPAMAYO_INPUT_HZ)
+
         self._num_history_steps = 16
         self._num_frames = 4
         inference_period = float(self.get_parameter("inference_period_sec").value)
@@ -94,7 +98,9 @@ class AlpamayoRosNode(Node):
             )
             self.get_logger().info(f"Subscribed to camera topic: {topic}")
 
-        self._odometry_buffer: deque[Odometry] = deque(maxlen=self._num_history_steps * 4)
+        self._odometry_buffer: deque[Odometry] = deque(
+            maxlen=self._num_history_steps * self.skip_num + 10
+        )
         odom_topic = self.get_parameter("odometry_topic").value
 
         odom_qos = QoSProfile(
@@ -158,9 +164,11 @@ class AlpamayoRosNode(Node):
             camera_tensors.append(torch.stack(tensors, dim=0))
         image_frames = torch.stack(camera_tensors, dim=0)
 
-        if len(self._odometry_buffer) < self._num_history_steps:
+        if len(self._odometry_buffer) < self._num_history_steps * self.skip_num:
             return None
-        odom_history = list(self._odometry_buffer)[-self._num_history_steps :]
+        odom_history = list(self._odometry_buffer)[
+            -self._num_history_steps * self.skip_num :: self.skip_num
+        ]
 
         # Build history tensors
         positions = []
