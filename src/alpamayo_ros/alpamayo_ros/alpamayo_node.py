@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import math
 import time
 from collections import deque
@@ -88,8 +87,6 @@ class AlpamayoRosNode(Node):
             topic: deque(maxlen=self._num_frames * 3) for topic in self._camera_topics
         }
 
-        # Use BEST_EFFORT QoS to match rosbag2_player default
-
         camera_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST, depth=10
         )
@@ -121,6 +118,12 @@ class AlpamayoRosNode(Node):
         )
         self._model.eval()
         self._processor = helper.get_processor(self._model.tokenizer)
+
+        # Set random seed once during initialization
+        seed = int(self.get_parameter("seed").value)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+
         self.get_logger().info("Alpamayo model loaded and ready.")
 
     def destroy_node(self) -> None:
@@ -207,11 +210,6 @@ class AlpamayoRosNode(Node):
         }
         model_inputs = helper.to_device(model_inputs, device=self._device)
 
-        seed = int(self.get_parameter("seed").value)
-        torch.manual_seed(seed)
-        if self._device.type == "cuda":
-            torch.cuda.manual_seed_all(seed)
-
         generation_kwargs = {
             "top_p": float(self.get_parameter("top_p").value),
             "temperature": float(self.get_parameter("temperature").value),
@@ -221,12 +219,7 @@ class AlpamayoRosNode(Node):
             "return_extra": True,
         }
 
-        autocast_ctx = (
-            torch.autocast(device_type="cuda", dtype=torch.bfloat16)
-            if self._device.type == "cuda"
-            else contextlib.nullcontext()
-        )
-        with autocast_ctx:
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             pred_xyz, pred_rot, extra = self._model.sample_trajectories_from_data_with_vlm_rollout(
                 data=model_inputs,
                 **generation_kwargs,
