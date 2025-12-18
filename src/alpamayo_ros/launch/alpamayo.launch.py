@@ -5,10 +5,10 @@ from launch_ros.actions import Node
 def generate_launch_description() -> LaunchDescription:
     """Launch Alpamayo node that listens to live camera + odometry topics."""
     default_camera_topics = [
-        "/sensing/camera/front_wide/image",
-        "/sensing/camera/front_tele/image",
-        "/sensing/camera/cross_left/image",
-        "/sensing/camera/cross_right/image",
+        "/sensing/camera/camera0/image_raw/compressed",
+        "/sensing/camera/camera1/image_raw/compressed",
+        "/sensing/camera/camera2/image_raw/compressed",
+        "/sensing/camera/camera3/image_raw/compressed",
     ]
     return LaunchDescription(
         [

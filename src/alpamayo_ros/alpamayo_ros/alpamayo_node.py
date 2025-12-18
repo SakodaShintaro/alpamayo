@@ -17,13 +17,12 @@ from typing import Dict, List, Optional
 import numpy as np
 import rclpy
 import torch
-from autoware_planning_msgs.msg import Trajectory as PlanningTrajectory
-from autoware_planning_msgs.msg import TrajectoryPoint
+from autoware_planning_msgs.msg import Trajectory, TrajectoryPoint
 from builtin_interfaces.msg import Duration
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from scipy.spatial.transform import Rotation
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
@@ -52,7 +51,6 @@ class AlpamayoRosNode(Node):
         self.declare_parameter("auto_run", True)
         self.declare_parameter("device", default_device)
         self.declare_parameter("frame_id", "base_link")
-        self.declare_parameter("publish_reasoning", True)
         self.declare_parameter("trajectory_topic", "/alpamayo/predicted_trajectory")
         self.declare_parameter("cot_topic", "/alpamayo/reasoning")
         self.declare_parameter("publisher_queue_size", 10)
@@ -73,15 +71,12 @@ class AlpamayoRosNode(Node):
 
         queue_size = int(self.get_parameter("publisher_queue_size").value)
         traj_topic = self.get_parameter("trajectory_topic").value
-        self._trajectory_pub = self.create_publisher(PlanningTrajectory, traj_topic, queue_size)
+        self._trajectory_pub = self.create_publisher(Trajectory, traj_topic, queue_size)
         self.get_logger().info(f"Publishing Autoware trajectories on {traj_topic}")
 
-        self._publish_reasoning = bool(self.get_parameter("publish_reasoning").value)
-        self._cot_pub = None
-        if self._publish_reasoning:
-            cot_topic = self.get_parameter("cot_topic").value
-            self._cot_pub = self.create_publisher(String, cot_topic, queue_size)
-            self.get_logger().info(f"Publishing reasoning traces on {cot_topic}")
+        cot_topic = self.get_parameter("cot_topic").value
+        self._cot_pub = self.create_publisher(String, cot_topic, queue_size)
+        self.get_logger().info(f"Publishing reasoning traces on {cot_topic}")
 
         self._trigger_srv = self.create_service(Trigger, "run_inference", self._handle_trigger)
 
@@ -104,7 +99,9 @@ class AlpamayoRosNode(Node):
         self._camera_lock = threading.Lock()
 
         for topic in self._camera_topics:
-            self.create_subscription(Image, topic, lambda msg, t=topic: self._handle_image(t, msg), 10)
+            self.create_subscription(
+                CompressedImage, topic, lambda msg, t=topic: self._handle_image(t, msg), 10
+            )
             self.get_logger().info(f"Subscribed to camera topic: {topic}")
 
         self._odometry_buffer: deque[Odometry] = deque(maxlen=self._num_history_steps * 4)
@@ -145,8 +142,8 @@ class AlpamayoRosNode(Node):
         response.message = "Alpamayo inference started."
         return response
 
-    def _handle_image(self, topic: str, msg: Image) -> None:
-        tensor = self._image_msg_to_tensor(msg)
+    def _handle_image(self, topic: str, msg: CompressedImage) -> None:
+        tensor = self._compressed_image_to_tensor(msg)
         if tensor is None:
             return
         with self._camera_lock:
@@ -156,18 +153,18 @@ class AlpamayoRosNode(Node):
         with self._odometry_lock:
             self._odometry_buffer.append(msg)
 
-    def _image_msg_to_tensor(self, msg: Image) -> Optional[torch.Tensor]:
-        if msg.encoding not in {"rgb8", "bgr8"}:
-            self.get_logger().warning_once(f"Unsupported image encoding: {msg.encoding}")
+    def _compressed_image_to_tensor(self, msg: CompressedImage) -> Optional[torch.Tensor]:
+        try:
+            import cv2
+        except ImportError:
+            self.get_logger().error("cv2 is required to decode CompressedImage messages.")
             return None
-        array = np.frombuffer(msg.data, dtype=np.uint8)
-        expected = msg.height * msg.width * 3
-        if array.size != expected:
-            self.get_logger().warning("Image size mismatch; skipping frame.")
+        np_arr = np.frombuffer(msg.data, np.uint8)
+        image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        if image is None:
+            self.get_logger().warning("Failed to decode compressed image.")
             return None
-        image = array.reshape((msg.height, msg.width, 3))
-        if msg.encoding == "bgr8":
-            image = image[..., ::-1]
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         tensor = torch.from_numpy(image).permute(2, 0, 1).contiguous()
         return tensor
 
@@ -279,7 +276,7 @@ class AlpamayoRosNode(Node):
         self._trajectory_pub.publish(traj_msg)
 
         cot_text = self._extract_text(extra, "cot")
-        if cot_text and self._cot_pub is not None:
+        if cot_text:
             cot_msg = String()
             cot_msg.data = cot_text
             self._cot_pub.publish(cot_msg)
@@ -291,12 +288,12 @@ class AlpamayoRosNode(Node):
         self,
         trajectory: torch.Tensor,
         rotations: torch.Tensor | None,
-    ) -> PlanningTrajectory:
+    ) -> Trajectory:
         traj_np = trajectory.numpy()
         rot_np = rotations.numpy() if rotations is not None else None
         now = self.get_clock().now().to_msg()
 
-        traj_msg = PlanningTrajectory()
+        traj_msg = Trajectory()
         traj_msg.header.stamp = now
         traj_msg.header.frame_id = self._frame_id
 
