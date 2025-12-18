@@ -38,10 +38,8 @@ class AlpamayoRosNode(Node):
         self.model_name: str = "nvidia/Alpamayo-R1-10B"
         self.declare_parameter("trajectory_topic", "/alpamayo/predicted_trajectory")
         self.declare_parameter("cot_topic", "/alpamayo/reasoning")
-        self.declare_parameter("publisher_queue_size", 10)
-        self.declare_parameter("trajectory_time_step", 0.1)
-        self.declare_parameter("inference_period_sec", 1.0)
         self.declare_parameter("odometry_topic", "/localization/kinematic_state")
+        self.declare_parameter("inference_period_sec", 1.0)
 
         # ROS2 Jazzy: Use non-empty default for string array parameters to properly infer type
         self.declare_parameter("camera_topics", [""])
@@ -53,7 +51,7 @@ class AlpamayoRosNode(Node):
         self._num_frames = 4
         inference_period = float(self.get_parameter("inference_period_sec").value)
 
-        queue_size = int(self.get_parameter("publisher_queue_size").value)
+        queue_size = 10
         traj_topic = self.get_parameter("trajectory_topic").value
         self._trajectory_pub = self.create_publisher(Trajectory, traj_topic, queue_size)
         self.get_logger().info(f"Publishing Autoware trajectories on {traj_topic}")
@@ -244,7 +242,7 @@ class AlpamayoRosNode(Node):
         traj_msg.header.stamp = now
         traj_msg.header.frame_id = self._frame_id
 
-        dt = float(self.get_parameter("trajectory_time_step").value)
+        dt = 0.1
         prev_xy = None
 
         for idx, point in enumerate(traj_np):
