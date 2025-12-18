@@ -18,12 +18,14 @@ import rclpy
 import torch
 from autoware_planning_msgs.msg import Trajectory, TrajectoryPoint
 from builtin_interfaces.msg import Duration
+from geometry_msgs.msg import Point
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from scipy.spatial.transform import Rotation
 from sensor_msgs.msg import CompressedImage
-from std_msgs.msg import String
+from std_msgs.msg import ColorRGBA, String
+from visualization_msgs.msg import Marker, MarkerArray
 
 from alpamayo_r1 import helper
 from alpamayo_r1.models.alpamayo_r1 import AlpamayoR1
@@ -59,6 +61,10 @@ class AlpamayoRosNode(Node):
         cot_topic = self.get_parameter("cot_topic").value
         self._cot_pub = self.create_publisher(String, cot_topic, queue_size)
         self.get_logger().info(f"Publishing reasoning traces on {cot_topic}")
+
+        marker_topic = traj_topic + "_markers"
+        self._marker_pub = self.create_publisher(MarkerArray, marker_topic, queue_size)
+        self.get_logger().info(f"Publishing trajectory markers on {marker_topic}")
 
         self._executor = ThreadPoolExecutor(max_workers=1)
         self._active_future: Optional[Future] = None
@@ -220,6 +226,9 @@ class AlpamayoRosNode(Node):
         traj_msg = self._to_autoware_trajectory(trajectory, rotation)
         self._trajectory_pub.publish(traj_msg)
 
+        marker_array = self._trajectory_to_markers(trajectory)
+        self._marker_pub.publish(marker_array)
+
         cot_text = self._extract_text(extra, "cot")
         if cot_text:
             cot_msg = String()
@@ -282,6 +291,34 @@ class AlpamayoRosNode(Node):
             prev_xy = (point[0], point[1])
 
         return traj_msg
+
+    def _trajectory_to_markers(self, trajectory: torch.Tensor) -> MarkerArray:
+        traj_np = trajectory.numpy()
+        now = self.get_clock().now().to_msg()
+
+        marker_array = MarkerArray()
+
+        # LINE_STRIP marker for trajectory path
+        line_marker = Marker()
+        line_marker.header.stamp = now
+        line_marker.header.frame_id = self._frame_id
+        line_marker.ns = "trajectory"
+        line_marker.id = 0
+        line_marker.type = Marker.LINE_STRIP
+        line_marker.action = Marker.ADD
+        line_marker.scale.x = 0.1  # Line width
+        line_marker.color = ColorRGBA(r=0.0, g=1.0, b=0.0, a=1.0)  # Green
+        line_marker.pose.orientation.w = 1.0
+
+        for point in traj_np:
+            p = Point()
+            p.x = float(point[0])
+            p.y = float(point[1])
+            p.z = float(point[2])
+            line_marker.points.append(p)
+
+        marker_array.markers.append(line_marker)
+        return marker_array
 
     def _extract_text(self, extra: dict, key: str) -> Optional[str]:
         if not extra or key not in extra:
