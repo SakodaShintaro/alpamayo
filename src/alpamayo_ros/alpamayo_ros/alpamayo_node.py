@@ -131,7 +131,9 @@ class AlpamayoRosNode(Node):
         payload = self._prepare_inference_payload()
         if payload is None:
             return
-        self._launch_inference(payload)
+        self.get_logger().info("Starting Alpamayo inference from streaming data.")
+        self._active_future = self._executor.submit(self._run_inference, payload)
+        self._active_future.add_done_callback(self._on_future_done)
 
     def _handle_image(self, topic: str, msg: CompressedImage) -> None:
         tensor = self._compressed_image_to_tensor(msg)
@@ -151,11 +153,6 @@ class AlpamayoRosNode(Node):
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         tensor = torch.from_numpy(image).permute(2, 0, 1).contiguous()
         return tensor
-
-    def _launch_inference(self, payload: dict) -> None:
-        self.get_logger().info("Starting Alpamayo inference from streaming data.")
-        self._active_future = self._executor.submit(self._run_inference, payload)
-        self._active_future.add_done_callback(self._on_future_done)
 
     def _prepare_inference_payload(self) -> Optional[dict]:
         if not all(len(buf) >= self._num_frames for buf in self._camera_buffers.values()):
