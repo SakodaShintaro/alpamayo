@@ -25,6 +25,7 @@ from scipy.spatial.transform import Rotation
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
+import cv2
 
 from alpamayo_r1 import helper
 from alpamayo_r1.models.alpamayo_r1 import AlpamayoR1
@@ -46,7 +47,6 @@ class AlpamayoRosNode(Node):
         self.declare_parameter("num_traj_samples", 1)
         self.declare_parameter("num_traj_sets", 1)
         self.declare_parameter("seed", 42)
-        self.declare_parameter("auto_run", True)
         self.declare_parameter("frame_id", "base_link")
         self.declare_parameter("trajectory_topic", "/alpamayo/predicted_trajectory")
         self.declare_parameter("cot_topic", "/alpamayo/reasoning")
@@ -104,9 +104,7 @@ class AlpamayoRosNode(Node):
         self.create_subscription(Odometry, odom_topic, self._handle_odometry, 50)
         self.get_logger().info(f"Subscribed to odometry topic: {odom_topic}")
 
-        self._auto_timer = None
-        if bool(self.get_parameter("auto_run").value):
-            self._auto_timer = self.create_timer(inference_period, self._timer_callback)
+        self._auto_timer = self.create_timer(inference_period, self._timer_callback)
 
     def destroy_node(self) -> None:
         """Cleanup resources before shutting down."""
@@ -148,11 +146,6 @@ class AlpamayoRosNode(Node):
             self._odometry_buffer.append(msg)
 
     def _compressed_image_to_tensor(self, msg: CompressedImage) -> Optional[torch.Tensor]:
-        try:
-            import cv2
-        except ImportError:
-            self.get_logger().error("cv2 is required to decode CompressedImage messages.")
-            return None
         np_arr = np.frombuffer(msg.data, np.uint8)
         image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         if image is None:

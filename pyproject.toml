@@ -15,6 +15,7 @@ dependencies = [
   "torchvision>=0.23.0",
   "transformers==4.57.1",
   "flash-attn>=2.8.3",
+  "opencv-python",
 ]
 
 [build-system]
