@@ -8,12 +8,10 @@ from __future__ import annotations
 
 import contextlib
 import math
-import threading
 import time
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Dict, List, Optional
-from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 
 import cv2
 import numpy as np
@@ -23,6 +21,7 @@ from autoware_planning_msgs.msg import Trajectory, TrajectoryPoint
 from builtin_interfaces.msg import Duration
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
+from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from scipy.spatial.transform import Rotation
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import String
@@ -91,7 +90,6 @@ class AlpamayoRosNode(Node):
         self._camera_buffers: Dict[str, deque] = {
             topic: deque(maxlen=self._num_frames * 3) for topic in self._camera_topics
         }
-        self._camera_lock = threading.Lock()
 
         # Use BEST_EFFORT QoS to match rosbag2_player default
 
@@ -106,7 +104,6 @@ class AlpamayoRosNode(Node):
             self.get_logger().info(f"Subscribed to camera topic: {topic}")
 
         self._odometry_buffer: deque[Odometry] = deque(maxlen=self._num_history_steps * 4)
-        self._odometry_lock = threading.Lock()
         odom_topic = self.get_parameter("odometry_topic").value
 
         odom_qos = QoSProfile(
@@ -143,12 +140,10 @@ class AlpamayoRosNode(Node):
         tensor = self._compressed_image_to_tensor(msg)
         if tensor is None:
             return
-        with self._camera_lock:
-            self._camera_buffers[topic].append((msg.header.stamp, tensor))
+        self._camera_buffers[topic].append((msg.header.stamp, tensor))
 
     def _handle_odometry(self, msg: Odometry) -> None:
-        with self._odometry_lock:
-            self._odometry_buffer.append(msg)
+        self._odometry_buffer.append(msg)
 
     def _compressed_image_to_tensor(self, msg: CompressedImage) -> Optional[torch.Tensor]:
         np_arr = np.frombuffer(msg.data, np.uint8)
@@ -166,19 +161,18 @@ class AlpamayoRosNode(Node):
         self._active_future.add_done_callback(self._on_future_done)
 
     def _prepare_inference_payload(self) -> Optional[dict]:
-        with self._camera_lock:
-            if not all(len(buf) >= self._num_frames for buf in self._camera_buffers.values()):
-                return None
-            camera_tensors: List[torch.Tensor] = []
-            for topic in self._camera_topics:
-                frames = list(self._camera_buffers[topic])[-self._num_frames :]
-                tensors = [frame for _, frame in frames]
-                camera_tensors.append(torch.stack(tensors, dim=0))
-            image_frames = torch.stack(camera_tensors, dim=0)
-        with self._odometry_lock:
-            if len(self._odometry_buffer) < self._num_history_steps:
-                return None
-            odom_history = list(self._odometry_buffer)[-self._num_history_steps :]
+        if not all(len(buf) >= self._num_frames for buf in self._camera_buffers.values()):
+            return None
+        camera_tensors: List[torch.Tensor] = []
+        for topic in self._camera_topics:
+            frames = list(self._camera_buffers[topic])[-self._num_frames :]
+            tensors = [frame for _, frame in frames]
+            camera_tensors.append(torch.stack(tensors, dim=0))
+        image_frames = torch.stack(camera_tensors, dim=0)
+
+        if len(self._odometry_buffer) < self._num_history_steps:
+            return None
+        odom_history = list(self._odometry_buffer)[-self._num_history_steps :]
         ego_history_xyz, ego_history_rot = self._build_history_tensors(odom_history)
         return {
             "image_frames": image_frames,
