@@ -5,8 +5,13 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      args:
+        USER_ID: ${USER_ID:-1000}
+        GROUP_ID: ${GROUP_ID:-1000}
+        USERNAME: ${USERNAME:-user}
     image: alpamayo-r1:latest
     container_name: alpamayo-r1
+    user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
     volumes:
       - ..:/workspace
       - /tmp/.X11-unix:/tmp/.X11-unix:rw

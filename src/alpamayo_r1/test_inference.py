@@ -32,7 +32,9 @@ data = load_physical_aiavdataset(clip_id, t0_us=5_100_000)
 print("Dataset loaded.")
 messages = helper.create_message(data["image_frames"].flatten(0, 1))
 
-model = AlpamayoR1.from_pretrained("nvidia/Alpamayo-R1-10B", dtype=torch.bfloat16).to("cuda")
+model = AlpamayoR1.from_pretrained(
+    "nvidia/Alpamayo-R1-10B", dtype=torch.bfloat16, cache_dir="./model_cache"
+).to("cuda")
 processor = helper.get_processor(model.tokenizer)
 
 inputs = processor.apply_chat_template(

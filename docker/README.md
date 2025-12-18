@@ -2,15 +2,17 @@
 
 ## ビルド方法
 
+ホストユーザーと同じUID/GIDでビルド：
+
 ```bash
 cd docker
-docker-compose build
+USER_ID=$(id -u) GROUP_ID=$(id -g) USERNAME=$(whoami) docker-compose build
 ```
 
 ## 実行方法
 
 ```bash
-docker-compose run alpamayo
+USER_ID=$(id -u) GROUP_ID=$(id -g) docker-compose run alpamayo
 ```
 
 ## コンテナ内での作業
@@ -22,11 +24,14 @@ docker-compose run alpamayo
 hf auth login
 
 # 推論テストの実行
-python src/alpamayo_r1/test_inference.py
+python3 src/alpamayo_r1/test_inference.py
 ```
 
 ## 注意事項
 
 - GPUを使用するため、NVIDIA Container Toolkit が必要です
-- ROS2 Humble がプリインストールされています
+- ROS2 Jazzy がプリインストールされています（Ubuntu 24.04ベース）
 - Python 3.12 がデフォルトのPythonバージョンです
+- ROS2 bag の互換性: Humble と Jazzy 間でbagファイルの互換性があります
+- コンテナはホストユーザーと同じUID/GIDで実行されます
+- `sudo`コマンドはパスワードなしで使用できます（必要に応じて）
