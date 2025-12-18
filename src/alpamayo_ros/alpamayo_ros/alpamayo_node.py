@@ -306,7 +306,7 @@ class AlpamayoRosNode(Node):
         line_marker.id = 0
         line_marker.type = Marker.LINE_STRIP
         line_marker.action = Marker.ADD
-        line_marker.scale.x = 0.1  # Line width
+        line_marker.scale.x = 1.0  # Line width
         line_marker.color = ColorRGBA(r=0.0, g=1.0, b=0.0, a=1.0)  # Green
         line_marker.pose.orientation.w = 1.0
 
