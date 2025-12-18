@@ -14,6 +14,7 @@ from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Dict, List, Optional
 
+import cv2
 import numpy as np
 import rclpy
 import torch
@@ -24,7 +25,6 @@ from rclpy.node import Node
 from scipy.spatial.transform import Rotation
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import String
-import cv2
 
 from alpamayo_r1 import helper
 from alpamayo_r1.models.alpamayo_r1 import AlpamayoR1
@@ -53,7 +53,9 @@ class AlpamayoRosNode(Node):
         self.declare_parameter("trajectory_time_step", 0.1)
         self.declare_parameter("inference_period_sec", 1.0)
         self.declare_parameter("odometry_topic", "/localization/kinematic_state")
-        self.declare_parameter("camera_topics", [])
+
+        # ROS2 Jazzy: Use non-empty default for string array parameters to properly infer type
+        self.declare_parameter("camera_topics", [""])
 
         self._device = torch.device("cuda")
         self._dtype = torch.bfloat16
@@ -79,7 +81,9 @@ class AlpamayoRosNode(Node):
 
         self._frame_id = self.get_parameter("frame_id").value
 
-        camera_topics = list(self.get_parameter("camera_topics").get_parameter_value().string_array_value)
+        camera_topics = list(
+            self.get_parameter("camera_topics").get_parameter_value().string_array_value
+        )
         if not camera_topics:
             raise ValueError("camera_topics parameter must list at least one image topic.")
         self._camera_topics = camera_topics
@@ -104,9 +108,12 @@ class AlpamayoRosNode(Node):
         self.get_logger().info(
             f"Loading Alpamayo model {self.model_name} on device={self._device} dtype={self._dtype}"
         )
-        self._model = AlpamayoR1.from_pretrained(self.model_name, dtype=self._dtype).to(self._device)
+        self._model = AlpamayoR1.from_pretrained(self.model_name, dtype=self._dtype).to(
+            self._device
+        )
         self._model.eval()
         self._processor = helper.get_processor(self._model.tokenizer)
+        self.get_logger().info("Alpamayo model loaded and ready.")
 
     def destroy_node(self) -> None:
         """Cleanup resources before shutting down."""
@@ -153,14 +160,14 @@ class AlpamayoRosNode(Node):
                 return None
             camera_tensors: List[torch.Tensor] = []
             for topic in self._camera_topics:
-                frames = list(self._camera_buffers[topic])[-self._num_frames:]
+                frames = list(self._camera_buffers[topic])[-self._num_frames :]
                 tensors = [frame for _, frame in frames]
                 camera_tensors.append(torch.stack(tensors, dim=0))
             image_frames = torch.stack(camera_tensors, dim=0)
         with self._odometry_lock:
             if len(self._odometry_buffer) < self._num_history_steps:
                 return None
-            odom_history = list(self._odometry_buffer)[-self._num_history_steps:]
+            odom_history = list(self._odometry_buffer)[-self._num_history_steps :]
         ego_history_xyz, ego_history_rot = self._build_history_tensors(odom_history)
         return {
             "image_frames": image_frames,
@@ -168,7 +175,9 @@ class AlpamayoRosNode(Node):
             "ego_history_rot": ego_history_rot,
         }
 
-    def _build_history_tensors(self, odom_history: List[Odometry]) -> tuple[torch.Tensor, torch.Tensor]:
+    def _build_history_tensors(
+        self, odom_history: List[Odometry]
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         positions = []
         rotations = []
         for msg in odom_history:
